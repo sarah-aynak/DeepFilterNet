@@ -4,7 +4,7 @@ import os
 import time
 import warnings
 from typing import List, Optional, Tuple, Union
-
+import csv
 import torch
 from loguru import logger
 from torch import Tensor, nn
@@ -58,35 +58,101 @@ def main(args):
         args.output_dir = "."
     elif not os.path.isdir(args.output_dir):
         os.mkdir(args.output_dir)
+
     df_sr = ModelParams().sr
+
+    # Determine input files
     if args.noisy_dir is not None:
         if len(args.noisy_audio_files) > 0:
             logger.error("Only one of `noisy_audio_files` or `noisy_dir` arguments are supported.")
             exit(1)
-        input_files = glob.glob(args.noisy_dir + "/*")
+        input_files = glob.glob(os.path.join(args.noisy_dir, "*"))
     else:
         assert len(args.noisy_audio_files) > 0, "No audio files provided"
         input_files = args.noisy_audio_files
+
     ds = AudioDataset(input_files, df_sr)
     loader = DataLoader(ds, num_workers=2, pin_memory=True)
     n_samples = len(ds)
-    for i, (file, audio, audio_sr) in enumerate(loader):
-        file = file[0]
-        audio = audio.squeeze(0)
-        progress = (i + 1) / n_samples * 100
-        t0 = time.time()
-        audio = enhance(
-            model, df_state, audio, pad=args.compensate_delay, atten_lim_db=args.atten_lim
-        )
-        t1 = time.time()
-        t_audio = audio.shape[-1] / df_sr
-        t = t1 - t0
-        rtf = t / t_audio
-        fn = os.path.basename(file)
-        p_str = f"{progress:2.0f}% | " if n_samples > 1 else ""
-        logger.info(f"{p_str}Enhanced noisy audio file '{fn}' in {t:.2f}s (RT factor: {rtf:.3f})")
-        audio = resample(audio.to("cpu"), df_sr, audio_sr)
-        save_audio(file, audio, sr=audio_sr, output_dir=args.output_dir, suffix=suffix, log=False)
+
+    # Open CSV file for latency logging
+    latency_file = os.path.join(args.output_dir, "latency_log.csv")
+    with open(latency_file, mode="w", newline="") as f_csv:
+        writer = csv.writer(f_csv)
+        writer.writerow(["filename", "latency_seconds", "audio_duration_seconds", "RT_factor"])
+
+        for i, (file, audio, audio_sr) in enumerate(loader):
+            file = file[0]
+            audio = audio.squeeze(0)
+            progress = (i + 1) / n_samples * 100
+
+            t0 = time.time()
+            # Enhance audio
+            enhanced_audio = enhance(
+                model, df_state, audio, pad=args.compensate_delay, atten_lim_db=args.atten_lim
+            )
+            t1 = time.time()
+
+            t_audio = enhanced_audio.shape[-1] / df_sr
+            latency = t1 - t0
+            rtf = latency / t_audio
+
+            fn = os.path.basename(file)
+            p_str = f"{progress:2.0f}% | " if n_samples > 1 else ""
+            logger.info(f"{p_str}Enhanced noisy audio file '{fn}' in {latency:.2f}s (RT factor: {rtf:.3f})")
+
+            # Save latency info to CSV
+            writer.writerow([fn, latency, t_audio, rtf])
+
+            # Resample back to original SR and save
+            enhanced_audio = resample(enhanced_audio.to("cpu"), df_sr, audio_sr)
+            save_audio(file, enhanced_audio, sr=audio_sr, output_dir=args.output_dir, suffix=suffix, log=False)
+
+    logger.info(f"Latency log saved to {latency_file}")
+
+# def main(args):
+#     model, df_state, suffix, epoch = init_df(
+#         args.model_base_dir,
+#         post_filter=args.pf,
+#         log_level=args.log_level,
+#         config_allow_defaults=True,
+#         epoch=args.epoch,
+#         mask_only=args.no_df_stage,
+#     )
+#     suffix = suffix if args.suffix else None
+#     if args.output_dir is None:
+#         args.output_dir = "."
+#     elif not os.path.isdir(args.output_dir):
+#         os.mkdir(args.output_dir)
+#     df_sr = ModelParams().sr
+#     if args.noisy_dir is not None:
+#         if len(args.noisy_audio_files) > 0:
+#             logger.error("Only one of `noisy_audio_files` or `noisy_dir` arguments are supported.")
+#             exit(1)
+#         input_files = glob.glob(args.noisy_dir + "/*")
+#     else:
+#         assert len(args.noisy_audio_files) > 0, "No audio files provided"
+#         input_files = args.noisy_audio_files
+#     ds = AudioDataset(input_files, df_sr)
+#     loader = DataLoader(ds, num_workers=2, pin_memory=True)
+#     n_samples = len(ds)
+#     for i, (file, audio, audio_sr) in enumerate(loader):
+#         file = file[0]
+#         audio = audio.squeeze(0)
+#         progress = (i + 1) / n_samples * 100
+#         t0 = time.time()
+#         audio = enhance(
+#             model, df_state, audio, pad=args.compensate_delay, atten_lim_db=args.atten_lim
+#         )
+#         t1 = time.time()
+#         t_audio = audio.shape[-1] / df_sr
+#         t = t1 - t0
+#         rtf = t / t_audio
+#         fn = os.path.basename(file)
+#         p_str = f"{progress:2.0f}% | " if n_samples > 1 else ""
+#         logger.info(f"{p_str}Enhanced noisy audio file '{fn}' in {t:.2f}s (RT factor: {rtf:.3f})")
+#         audio = resample(audio.to("cpu"), df_sr, audio_sr)
+#         save_audio(file, audio, sr=audio_sr, output_dir=args.output_dir, suffix=suffix, log=False)
 
 
 def get_model_basedir(m: Optional[str]) -> str:

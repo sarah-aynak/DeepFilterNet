@@ -470,7 +470,6 @@ def setup_losses() -> Loss:
     # loss = torch.jit.script(loss)
     return loss
 
-
 def load_opt(
     cp_dir: Optional[str], model: nn.Module, mask_only: bool = False, df_only: bool = False
 ) -> optim.Optimizer:
@@ -481,35 +480,78 @@ def load_opt(
     betas: Tuple[int, int] = config(
         "opt_betas", [0.9, 0.999], Csv(float), section="optim", save=False  # type: ignore
     )
+
     if mask_only:
-        params = []
-        for n, p in model.named_parameters():
-            if not ("dfrnn" in n or "df_dec" in n):
-                params.append(p)
+        params = [p for n, p in model.named_parameters() if not ("dfrnn" in n or "df_dec" in n)]
     elif df_only:
-        params = (p for n, p in model.named_parameters() if "df" in n.lower())
+        params = [p for n, p in model.named_parameters() if "df" in n.lower()]
     else:
         params = model.parameters()
+
     supported = {
         "adam": lambda p: optim.Adam(p, lr=lr, weight_decay=decay, betas=betas, amsgrad=True),
         "adamw": lambda p: optim.AdamW(p, lr=lr, weight_decay=decay, betas=betas, amsgrad=True),
         "sgd": lambda p: optim.SGD(p, lr=lr, momentum=momentum, nesterov=True, weight_decay=decay),
         "rmsprop": lambda p: optim.RMSprop(p, lr=lr, momentum=momentum, weight_decay=decay),
     }
+
     if optimizer not in supported:
         raise ValueError(
             f"Unsupported optimizer: {optimizer}. Must be one of {list(supported.keys())}"
         )
+
     opt = supported[optimizer](params)
     logger.debug(f"Training with optimizer {opt}")
+
     if cp_dir is not None:
-        try:
-            read_cp(opt, "opt", cp_dir, log=False)
-        except ValueError as e:
-            logger.error(f"Could not load optimizer state: {e}")
+        # Skip loading old optimizer checkpoint for safety
+        logger.info("Skipping loading old optimizer checkpoint. Starting optimizer fresh.")
+        # read_cp(opt, "opt", cp_dir, log=False)  <-- commented out
+
     for group in opt.param_groups:
         group.setdefault("initial_lr", lr)
     return opt
+
+
+# def load_opt(
+#     cp_dir: Optional[str], model: nn.Module, mask_only: bool = False, df_only: bool = False
+# ) -> optim.Optimizer:
+#     lr = config("LR", 5e-4, float, section="optim")
+#     momentum = config("momentum", 0, float, section="optim")  # For sgd, rmsprop
+#     decay = config("weight_decay", 0.05, float, section="optim")
+#     optimizer = config("optimizer", "adamw", str, section="optim").lower()
+#     betas: Tuple[int, int] = config(
+#         "opt_betas", [0.9, 0.999], Csv(float), section="optim", save=False  # type: ignore
+#     )
+#     if mask_only:
+#         params = []
+#         for n, p in model.named_parameters():
+#             if not ("dfrnn" in n or "df_dec" in n):
+#                 params.append(p)
+#     elif df_only:
+#         params = (p for n, p in model.named_parameters() if "df" in n.lower())
+#     else:
+#         params = model.parameters()
+#     supported = {
+#         "adam": lambda p: optim.Adam(p, lr=lr, weight_decay=decay, betas=betas, amsgrad=True),
+#         "adamw": lambda p: optim.AdamW(p, lr=lr, weight_decay=decay, betas=betas, amsgrad=True),
+#         "sgd": lambda p: optim.SGD(p, lr=lr, momentum=momentum, nesterov=True, weight_decay=decay),
+#         "rmsprop": lambda p: optim.RMSprop(p, lr=lr, momentum=momentum, weight_decay=decay),
+#     }
+#     if optimizer not in supported:
+#         raise ValueError(
+#             f"Unsupported optimizer: {optimizer}. Must be one of {list(supported.keys())}"
+#         )
+#     opt = supported[optimizer](params)
+#     logger.debug(f"Training with optimizer {opt}")
+#     if cp_dir is not None:
+#         try:
+#             read_cp(opt, "opt", cp_dir, log=False)
+#         except ValueError as e:
+#             logger.error(f"Could not load optimizer state: {e}")
+#     for group in opt.param_groups:
+#         group.setdefault("initial_lr", lr)
+#     return opt
 
 
 def setup_lrs(steps_per_epoch: int) -> np.ndarray:
@@ -576,15 +618,15 @@ def summary_write(
     def synthesis(x: Tensor) -> Tensor:
         return torch.as_tensor(state.synthesis(make_np(as_complex(x.detach()))))
 
-    torchaudio.save(
-        os.path.join(summary_dir, f"{prefix}_clean_snr{snr}.wav"), synthesis(clean[idx]), p.sr
-    )
-    torchaudio.save(
-        os.path.join(summary_dir, f"{prefix}_noisy_snr{snr}.wav"), synthesis(noisy[idx]), p.sr
-    )
-    torchaudio.save(
-        os.path.join(summary_dir, f"{prefix}_enh_snr{snr}.wav"), synthesis(enh[idx]), p.sr
-    )
+    #torchaudio.save(
+    #    os.path.join(summary_dir, f"{prefix}_clean_snr{snr}.wav"), synthesis(clean[idx]), p.sr, format="wav"
+    #)
+    #torchaudio.save(
+    #    os.path.join(summary_dir, f"{prefix}_noisy_snr{snr}.wav"), synthesis(noisy[idx]), p.sr, format="wav"
+    #)
+    #torchaudio.save(
+    #    os.path.join(summary_dir, f"{prefix}_enh_snr{snr}.wav"), synthesis(enh[idx]), p.sr, format="wav"
+    #)
     np.savetxt(
         os.path.join(summary_dir, f"{prefix}_lsnr_snr{snr}.txt"),
         lsnr[idx].detach().cpu().numpy(),
