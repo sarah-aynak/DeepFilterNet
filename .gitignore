@@ -146,3 +146,9 @@ dmypy.json
 
 # IDE
 .idea
+
+
+/DeepFilterNet/results
+/DeepFilterNet/test_clean
+/DeepFilterNet/test_noisy
+/hdf5_data
