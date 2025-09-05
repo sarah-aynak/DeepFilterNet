@@ -275,14 +275,17 @@ python df/train.py path/to/dataset.cfg path/to/data_dir/ path/to/base_dir/
 ## Enhancement 
 
 To use the fine tuned model:<br>
+```py
 python DeepFilterNet/df/enhance.py -m fine_tuned path/to/noisy_audio.wav
+```
 
 ## Metrics
 DeepFilterNet by default calculates STOI and SSNR for different signal to noise ratios.<br>
 Created a script to calcualte different metrics that are comparable with SEGAN.<br>
-
+```py
 cd DeepFilterNet<br>
 python -m df.metrics2.py
+```
 
 
 
