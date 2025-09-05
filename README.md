@@ -283,7 +283,7 @@ python DeepFilterNet/df/enhance.py -m fine_tuned path/to/noisy_audio.wav
 DeepFilterNet by default calculates STOI and SSNR for different signal to noise ratios.<br>
 Created a script to calcualte different metrics that are comparable with SEGAN.<br>
 ```py
-cd DeepFilterNet<br>
+cd DeepFilterNet
 python -m df.metrics2.py
 ```
 
